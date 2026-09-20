@@ -2,7 +2,7 @@ function parsePdb(pdbText) {
   const atoms = [];
   const bonds = [];
   const atomMap = new Map();
-  const bondSet = new Set();
+
   let firstModel = false;
   let firstModelEnded = false;
   let insideFirstModel = false;
