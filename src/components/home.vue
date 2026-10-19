@@ -203,7 +203,7 @@
 <script setup>
 import { ref } from 'vue'
 import viewer from './viewer.vue'
-import parsePdb from "../utils/pdb.js"
+import {parsePdb} from '../utils/pdb.js'
 const active = ref('SMILES')
 const mode = ref('auto')
 const setting=ref(false)
