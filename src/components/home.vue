@@ -79,7 +79,10 @@
                                     <span class="font-semibold flex flex-1">
                                         头端
                                     </span>
-                                    <div class="flex flex-2 py-2 px-3 bg-gray-200">C1</div>
+                                    <!-- 已确认结果优先显示；确认前显示当前选中的端点 serial。 -->
+                                    <div class="flex flex-2 py-2 px-3 bg-gray-200">
+                                        {{ sites.head?.retainedSerial ?? (phase === 'head' ? atom : null) ?? '待选择' }}
+                                    </div>
                                     <div class="flex flex-1 items-center justify-center ">
                                         <div class="w-3 h-3 rounded-full bg-green-500"></div>
                                     </div>
@@ -88,7 +91,9 @@
                                     <span class="font-semibold flex flex-1">
                                         尾端
                                     </span>
-                                    <div class="flex flex-2 py-2 px-3 bg-gray-200">C1</div>
+                                    <div class="flex flex-2 py-2 px-3 bg-gray-200">
+                                        {{ sites.tail?.retainedSerial ?? (phase === 'tail' ? atom : null) ?? '待选择' }}
+                                    </div>
                                     <div class="flex flex-1 items-center justify-center ">
                                         <div class="w-3 h-3 rounded-full bg-red-500"></div>
                                     </div>
@@ -97,8 +102,12 @@
                             <div class="flex justify-end py-2 text-center">
                                 <button
                                     @click="settingChange"
-                                    class="flex w-30 py-2 rounded  text-sm text-black bg-gray-200 items-center justify-center hover:bg-blue-500">
-                                    应用设置</button>
+                                    :disabled="mode === 'manual' && !canConfirm"
+                                    class="flex w-30 py-2 rounded  text-sm text-black bg-gray-200 items-center justify-center hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    {{ mode !== 'manual' ? '应用设置'
+                                        : phase === 'head' ? '确认头部'
+                                        : phase === 'tail' ? '确认尾部并应用'
+                                        : '标定完成' }}</button>
                             </div>
                         </div>
                     </div>
@@ -142,7 +151,12 @@
                 </section>
             </aside>
             <middle class="relative flex-1 overflow-hidden rounded-md border border-gray-200 bg-white">
-                <viewer />
+                <viewer
+                    ref="siteViewer"
+                    :site-mode="mode === 'manual'"
+                    @bond-click="selectBond"
+                    @atom-click="selectAtom"
+                />
             </middle>
             <aside class="w-50 shrink-0 overflow-y-auto rounded-md border border-gray-200 bg-white">
                 <section class="border border-b border-gray-200">
@@ -204,9 +218,19 @@
 import { ref } from 'vue'
 import viewer from './viewer.vue'
 import {parsePdb} from '../utils/pdb.js'
+import { useSiteSelection } from '../composables/useSiteSelection.js'
 const active = ref('SMILES')
 const mode = ref('auto')
 const setting=ref(false)
+const siteViewer = ref(null)
+
+// 父组件持有唯一一套标定状态：接收点击事件，再通知 viewer 更新样式。
+const {
+    phase, atom, sites, canConfirm,
+    selectBond, selectAtom, confirm, reset,
+} = useSiteSelection(selection => {
+    siteViewer.value?.setSiteSelection(selection)
+})
 const pdbText = `
 HETATM    1  C1  UNL     1       0.000   0.000   0.000  1.00  0.00           C
 HETATM    2  O1  UNL     1       1.430   0.000   0.000  1.00  0.00           O
@@ -222,9 +246,14 @@ var parsedData = parsePdb(pdbText)
 console.log(parsedData)
 
 function settingChange(){
+    if (mode.value === 'manual') {
+        // 第一次确认仅进入尾部阶段；第二次确认才展开聚合设置。
+        if (!confirm() || phase.value !== 'ready') return
+    }
     setting.value=true
 }
 function resetSetting() {
     setting.value = false
+    reset() // 导入或切换标定方式时，同时清除当前选择和已确认位点。
 }
 </script>

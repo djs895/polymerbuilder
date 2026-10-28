@@ -1,20 +1,29 @@
 import MathUtils from "./MathUtils";
 
-function core(x1, y1, z1, x2, y2, z2, n,angle) {
-  const number = n;
-    //item为目标函数保存对象进行操作后的结果
+function core(x1, y1, z1, x2, y2, z2, n, anglea, angleb, anglec) {
   const item = {
     position: { position1: [x1, y1, z1] },
-    direction: { direction1: [x2-x1, y2-y1, z2-z1] },
+    direction: { direction1: [x2 - x1, y2 - y1, z2 - z1] },
   };
-  for (let i = 1; i <= number; i++) {
-    //通过解构赋值的方式获取起始位点的坐标和将要平移的向量
-    const[x,y,z] =item.position[`position${i}`]
-    const[dx, dy, dz] = item.direction[`direction${i}`];
-    //将目标的结果存入item结果对象，并作为一个元素保存
-    item.direction[`direction${i+1}`] = MathUtils.rotate(dx, dy, dz, angle);
-    item.position[`position${i+1}`]=MathUtils.translate(x,y,z,dx,dy,dz);
+
+  for (let i = 1; i <= n; i++) {
+    const [x, y, z] = item.position[`position${i}`];
+    const [dx, dy, dz] = item.direction[`direction${i}`];
+
+    // 使用当前方向平移，得到下一个位置
+    item.position[`position${i + 1}`] =
+      MathUtils.translate(x, y, z, dx, dy, dz);
+
+    // 将当前方向依次绕 z、x、z 轴旋转
+    let [rx, ry, rz] = MathUtils.rotatez(dx, dy, dz, anglea);
+    [rx, ry, rz] = MathUtils.rotatex(rx, ry, rz, angleb);
+    [rx, ry, rz] = MathUtils.rotatez(rx, ry, rz, anglec);
+
+    // 保存旋转后的方向，供下一轮平移使用
+    item.direction[`direction${i + 1}`] = [rx, ry, rz];
   }
-  return item
+
+  return item;
 }
-export default core
+
+export default core;
