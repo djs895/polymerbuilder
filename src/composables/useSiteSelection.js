@@ -46,12 +46,16 @@ export function useSiteSelection(onChange) {
   }
 
   function notify() {
-    onChange({ bondSerials: bond.value, retainedSerial: atom.value });
+    onChange({
+      bondSerials: bond.value,
+      retainedSerial: atom.value,
+      phase: phase.value,
+      sites: { ...sites.value },
+    });
   }
 
-  // 两个监听器只通知显示层，不互相修改状态；viewer 合并绘图请求。
-  watch(bond, notify);
-  watch(atom, notify);
+  // 合并本轮状态变化，向显示层传递当前阶段及已确认的头尾。
+  watch([bond, atom, phase, sites], notify, { deep: true });
 
   function reset() {
     phase.value = "head";
