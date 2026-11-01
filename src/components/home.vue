@@ -34,7 +34,7 @@
                                 ref="pdbInput"
                                 type="file"
                                 accept=".pdb,.ent"
-                                :disabled="isImporting"
+                                :disabled="isImporting || deletionBusy"
                                 @change="importError = ''"
                                 class=" w-full h-12 border border-gray-300 text-sm bg-gray-100 text-center"
                                 aria-label="选择 PDB 文件">
@@ -45,7 +45,7 @@
                                 <button
                                     type="button"
                                     @click="importPdb"
-                                    :disabled="isImporting"
+                                    :disabled="isImporting || deletionBusy"
                                     class="flex w-30 py-2 rounded  bg-gray-200 text-sm text-black  items-center justify-center hover:bg-blue-400 disabled:opacity-50">
                                     {{ isImporting ? '读取中…' : '导入' }}</button>
                             </div>
@@ -60,11 +60,10 @@
                         <button
                             type="button"
                             @click="startSiteSetting"
-                            :disabled="editingSite"
-                            class="px-2 py-1 rounded bg-gray-200 hover:bg-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                            :disabled="isImporting || deletionBusy"
+                            class="px-2 py-1 rounded bg-gray-200 hover:bg-blue-400"
                         >
-                            <!-- disabled值对应editingSite当editingSite为ture时禁止操作 -->
-                            {{ editingSite ? '设置中' : '参数设置' }}
+                            {{ editingSite ? '重新标定' : '参数设置' }}
                         </button>
                     </div>
                     <div class="space-y-3 p-3">
@@ -76,7 +75,7 @@
                                     </span>
                                     <!-- 已确认结果优先显示；确认前显示当前选中的端点 serial。 -->
                                     <div class="flex flex-2 py-2 px-3 bg-gray-200">
-                                        {{ sites.head?.retainedSerial ?? (phase === 'head' ? atom : null) ?? '待选择' }}
+                                        {{ connectionSites?.headSerial ?? sites.head?.retainedSerial ?? (phase === 'head' ? atom : null) ?? '待选择' }}
                                     </div>
                                     <div class="flex flex-1 items-center justify-center ">
                                         <div class="w-3 h-3 rounded-full bg-green-500"></div>
@@ -87,7 +86,7 @@
                                         尾端
                                     </span>
                                     <div class="flex flex-2 py-2 px-3 bg-gray-200">
-                                        {{ sites.tail?.retainedSerial ?? (phase === 'tail' ? atom : null) ?? '待选择' }}
+                                        {{ connectionSites?.tailSerial ?? sites.tail?.retainedSerial ?? (phase === 'tail' ? atom : null) ?? '待选择' }}
                                     </div>
                                     <div class="flex flex-1 items-center justify-center ">
                                         <div class="w-3 h-3 rounded-full bg-red-500"></div>
@@ -97,11 +96,19 @@
                             <div class="flex justify-end py-2 text-center">
                                 <button
                                     @click="settingChange"
-                                    :disabled="!editingSite || !canConfirm"
+                                    :disabled="!editingSite || !canConfirm || isImporting || deletionBusy"
                                     class="flex w-30 py-2 rounded  text-sm text-black bg-gray-200 items-center justify-center hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
                                     {{ phase === 'head' ? '确认头部'
                                         : phase === 'tail' ? '确认尾部并应用'
                                         : '标定完成' }}</button>
+                            </div>
+                            <p v-if="siteError" role="alert" class="text-red-500">{{ siteError }}</p>
+                            <p v-if="leavingGroups" class="text-gray-500">
+                                待清除原子：头端 {{ leavingGroups.head.length }} 个，尾端 {{ leavingGroups.tail.length }} 个
+                            </p>
+                            <div class="flex justify-end mt-2">
+                                <ApplyDeletion :available="!!leavingGroups && !isImporting"
+                                    :busy="deletionBusy" @apply="applyDeletion" />
                             </div>
                         </div>
                     </div>
@@ -149,7 +156,8 @@
                 <viewer
                     ref="siteViewer"
                     :pdb-text="pdbText"
-                    :site-mode="editingSite"
+                    :infer-bonds="inferBonds"
+                    :site-mode="editingSite && !isImporting && !deletionBusy"
                     @bond-click="selectBond"
                     @atom-click="selectAtom"
                 />
@@ -211,10 +219,15 @@
 
 
 <script setup>
-import { ref } from 'vue'
+import { ref, shallowRef } from 'vue'
 import viewer from './viewer.vue'
-import {parsePdb} from '../utils/pdb.js'
+import ApplyDeletion from './ApplyDeletion.vue'
+import { PdbDeletionController } from '../controllers/PdbDeletionController.js'
+import { importPdbFile } from '../utils/importPdbFile.js'
 import { useSiteSelection } from '../composables/useSiteSelection.js'
+import {
+    confirmSiteSettings, resetSiteSettings, updateViewerSelection,
+} from '../utils/siteSettings.js'
 const active = ref('SMILES')
 const setting=ref(false)
 // 默认预览；只有点击“参数设置”后才开启位点交互。
@@ -230,13 +243,21 @@ const isImporting = ref(false)
 const importError = ref('')
 
 // 父组件持有唯一一套标定状态：接收点击事件，再通知 viewer 更新样式。
+const selection = useSiteSelection(updateViewerSelection.bind(null, siteViewer))
 const {
     phase, atom, sites, canConfirm,
-    selectBond, selectAtom, confirm, reset,
-} = useSiteSelection(selection => {
-// 对参数为selection的函数siteViewer.value.setSiteSelection执行结果进行返回
-    siteViewer.value?.setSiteSelection(selection)
-})
+    selectBond, selectAtom,
+} = selection
+// 确认成功时写入；模板读取数量，后续聚合可读取两端 serial 数组。
+const leavingGroups = shallowRef(null)
+const siteError = ref('')
+// 每个组件实例持有独立 ref，处理函数通过显式参数读取最新值。
+const siteState = {
+    selection, siteViewer, editingSite, setting, leavingGroups, siteError,
+}
+// Vue 按钮事件调用绑定函数；业务状态来自绑定参数，不捕获 setup 变量。
+const settingChange = confirmSiteSettings.bind(null, siteState)
+const resetSetting = resetSiteSettings.bind(null, siteState)
 // 保存 PDB 原始文本，作为解析器和查看器共同的数据来源。
 const pdbText = ref(`
 HETATM    1  C1  UNL     1       0.000   0.000   0.000  1.00  0.00           C
@@ -249,58 +270,15 @@ CONECT    3    1
 CONECT    4    1
 END
 `);
-var parsedData = parsePdb(pdbText.value)
-console.log(parsedData)
+// 删除控制器拥有恢复来源与连接端快照；页面只连接状态和事件。
+const deletion = new PdbDeletionController({ pdbText, siteState, isImporting })
+const { busy: deletionBusy, connectionSites, inferBonds } = deletion
+const applyDeletion = deletion.apply.bind(deletion)
+const startSiteSetting = deletion.restart.bind(deletion)
+// 文件读取器只接收输入状态和回调，不依赖删除控制器的内部实现。
+const importPdb = importPdbFile.bind(null, {
+    active, pdbInput, isImporting, importError, busy: deletionBusy,
+    acceptText: deletion.acceptText.bind(deletion), reset: resetSetting,
+})
 
-async function importPdb() {
-    if (isImporting.value) return
-    // 其他导入入口暂时沿用原有行为。
-    if (active.value !== 'PDB') {
-        resetSetting()
-        return
-    }
-
-    importError.value = ''
-    const file = pdbInput.value?.files?.[0]
-    if (!file) {
-        importError.value = '请先选择 PDB 文件。'
-        return
-    }
-
-    isImporting.value = true
-    try {
-        // 原样保存 File.text() 返回的文本，不做替换、裁剪或原子解析。
-        // 保留空格、固定列宽、换行和 CONECT 等记录，与手写 PDB Demo 一样作为字符串使用。
-        const text = await file.text()
-        // 读取期间若已切换入口或文件，旧读取结果不再应用。
-        if (active.value !== 'PDB' || pdbInput.value?.files?.[0] !== file) return
-        // 读取成功后替换文本；需要原子数据时再单独调用 parsePdb(pdbText.value)。
-        pdbText.value = text
-        resetSetting()
-    } catch (error) {
-        //error内容会自动传入message
-        importError.value = error instanceof Error ? error.message : 'PDB 文件读取失败。'
-    } finally {
-        isImporting.value = false
-    }
-}
-
-function startSiteSetting() {
-    resetSetting()
-    editingSite.value = true
-}
-
-function settingChange(){
-    if (!editingSite.value) return
-    // 第一次确认仅进入尾部阶段；第二次确认才展开聚合设置。
-    if (!confirm() || phase.value !== 'ready') return
-    // confirm 已保存头尾结果，退出编辑时不调用 reset，避免清除结果。
-    editingSite.value = false
-    setting.value=true
-}
-function resetSetting() {
-    editingSite.value = false
-    setting.value = false
-    reset() // 导入或重新设置参数时，同时清除当前选择和已确认位点。
-}
 </script>
