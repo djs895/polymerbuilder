@@ -9,7 +9,15 @@
                 <span class="rounded px-2 py-1 bg-gray-500 border">新建</span>
                 <span class="rounded px-2 py-1 bg-gray-500 border">打开</span>
                 <span class="rounded px-2 py-1 bg-gray-500 border">清除</span>
-                <span class="rounded px-2 py-1 bg-gray-500 border">保存</span>
+                <details class="relative">
+                    <summary class="cursor-pointer rounded bg-gray-200 px-2 py-1">保存</summary>
+                    <button
+                        type="button"
+                        :disabled="!polymerResult || deletionBusy || isImporting"
+                        @click="exportPdb(pdbText, polymerResult)"
+                        class="absolute right-0 z-20 mt-1 w-36 rounded bg-white p-2 shadow hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >保存 PDB 文件</button>
+                </details>
             </div>
         </header>
 
@@ -75,7 +83,7 @@
                                     </span>
                                     <!-- 已确认结果优先显示；确认前显示当前选中的端点 serial。 -->
                                     <div class="flex flex-2 py-2 px-3 bg-gray-200">
-                                        {{ connectionSites?.headSerial ?? sites.head?.retainedSerial ?? (phase === 'head' ? atom : null) ?? '待选择' }}
+                                        {{ polymerResult ? '原单体 ' : '' }}{{ connectionSites?.headSerial ?? sites.head?.retainedSerial ?? (phase === 'head' ? atom : null) ?? '待选择' }}
                                     </div>
                                     <div class="flex flex-1 items-center justify-center ">
                                         <div class="w-3 h-3 rounded-full bg-green-500"></div>
@@ -86,7 +94,7 @@
                                         尾端
                                     </span>
                                     <div class="flex flex-2 py-2 px-3 bg-gray-200">
-                                        {{ connectionSites?.tailSerial ?? sites.tail?.retainedSerial ?? (phase === 'tail' ? atom : null) ?? '待选择' }}
+                                        {{ polymerResult ? '原单体 ' : '' }}{{ connectionSites?.tailSerial ?? sites.tail?.retainedSerial ?? (phase === 'tail' ? atom : null) ?? '待选择' }}
                                     </div>
                                     <div class="flex flex-1 items-center justify-center ">
                                         <div class="w-3 h-3 rounded-full bg-red-500"></div>
@@ -122,32 +130,37 @@
                                 <div class="flex flex-1 font-semibold  ">
                                     聚合类型
                                 </div>
-                                <div class="flex flex-2 py-1 bg-gray-200 ">
-                                    123
-                                </div>
+                                <select v-model="polymerType" aria-label="聚合类型" :disabled="deletionBusy || isImporting"
+                                    class="flex-2 min-w-0 py-1 bg-gray-200">
+                                    <option value="head-tail">头尾连接</option>
+                                    <option value="head-head">头头/尾尾交替</option>
+                                </select>
                             </div>
                             <div class="flex mt-2">
                                 <div class="flex flex-1 font-semibold  ">
                                     聚合度
                                 </div>
-                                <div class="flex flex-2 py-1 bg-gray-200 ">
-                                    123
-                                </div>
+                                <input v-model.number="polymerN" type="number" min="1" step="1" aria-label="聚合度"
+                                    :disabled="deletionBusy || isImporting" class="flex-2 min-w-0 w-0 py-1 bg-gray-200">
                             </div>
                             <div class="flex mt-2">
                                 <div class="flex flex-1 font-semibold  ">
-                                    构型
+                                    键长（Å）
                                 </div>
-                                <div class="flex flex-2 py-1 bg-gray-200 ">
-                                    123
-                                </div>
+                                <input v-model.number="polymerBondLength" type="number" min="0" step="any" placeholder="请输入"
+                                    aria-label="目标键长（Å）" :disabled="deletionBusy || isImporting"
+                                    class="flex-2 min-w-0 w-0 py-1 bg-gray-200">
                             </div>
                         </div>
                         <div class="flex justify-end py-2 text-center">
                                 <button
-                                    class="flex w-30 py-2 rounded  text-sm text-black bg-gray-200 items-center justify-center hover:bg-blue-500">
+                                    type="button" @click="applyPolymer"
+                                    :disabled="!monomerTemplate || deletionBusy || isImporting"
+                                    class="flex w-30 py-2 rounded text-sm text-black bg-gray-200 items-center justify-center hover:bg-blue-500 disabled:opacity-50">
                                     应用设置</button>
                         </div>
+                        <p v-if="!monomerTemplate" class="text-gray-500">请先应用原子删除。</p>
+                        <p v-if="polymerError" role="alert" class="text-red-500">{{ polymerError }}</p>
                     </div>
                 </section>
             </aside>
@@ -170,23 +183,23 @@
                     <div class="space-y-3 p-3">
                         <div class="flex justify-between">
                             <span class="text-sm text-gray-500">结构名称</span>
-                            <span class="text-sm text-gray-500">polymer</span>
+                            <span class="text-sm text-gray-500">{{ polymerResult ? '聚合物' : '单体' }}</span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-sm text-gray-500">聚合类型</span>
-                            <span class="text-sm text-gray-500">polymer</span>
+                            <span class="text-sm text-gray-500">{{ polymerResult ? (polymerResult.type === 'head-tail' ? '头尾' : '头头/尾尾') : '—' }}</span>
                         </div>                        
                         <div class="flex justify-between">
                             <span class="text-sm text-gray-500">聚合度</span>
-                            <span class="text-sm text-gray-500">polymer</span>
+                            <span class="text-sm text-gray-500">{{ polymerResult?.n ?? '—' }}</span>
                         </div>                        
                         <div class="flex justify-between">
                             <span class="text-sm text-gray-500">原子数</span>
-                            <span class="text-sm text-gray-500">polymer</span>
+                            <span class="text-sm text-gray-500">{{ polymerResult?.atomCount ?? '—' }}</span>
                         </div>                        
                         <div class="flex justify-between">
                             <span class="text-sm text-gray-500">分子量</span>
-                            <span class="text-sm text-gray-500">polymer</span>
+                            <span class="text-sm text-gray-500">—</span>
                         </div>                        
                     </div>
                 </section>
@@ -201,7 +214,7 @@
                                 <span class="text-gray-500 p-1">生成结构</span>
                             </div>
                             <span class="text-gray-500">
-                                完成
+                                {{ deletionBusy ? '处理中' : polymerResult ? '完成' : '待生成' }}
                             </span>
 
                         </div>
@@ -219,14 +232,15 @@
 
 
 <script setup>
-import { ref, shallowRef } from 'vue'
+import { ref, shallowRef, watch } from 'vue'
 import viewer from './viewer.vue'
 import ApplyDeletion from './ApplyDeletion.vue'
 import { PdbDeletionController } from '../controllers/PdbDeletionController.js'
+import { PolymerBuildController } from '../controllers/PolymerBuildController.js'
 import { importPdbFile } from '../utils/importPdbFile.js'
 import { useSiteSelection } from '../composables/useSiteSelection.js'
 import {
-    confirmSiteSettings, resetSiteSettings, updateViewerSelection,
+    confirmSiteSettings, updateViewerSelection,
 } from '../utils/siteSettings.js'
 const active = ref('SMILES')
 const setting=ref(false)
@@ -257,34 +271,70 @@ const siteState = {
 }
 // Vue 按钮事件调用绑定函数；业务状态来自绑定参数，不捕获 setup 变量。
 const settingChange = confirmSiteSettings.bind(null, siteState)
-const resetSetting = resetSiteSettings.bind(null, siteState)
 // 保存 PDB 原始文本，作为解析器和查看器共同的数据来源。
 const pdbText = ref(`
-HEADER    ETHYLENE MOLECULE
-TITLE     ETHYLENE C2H4
-HETATM    1  C1  ETH A   1      -0.670   0.000   0.000  1.00  0.00           C
-HETATM    2  C2  ETH A   1       0.670   0.000   0.000  1.00  0.00           C
-HETATM    3  H1  ETH A   1      -1.215   0.944   0.000  1.00  0.00           H
-HETATM    4  H2  ETH A   1      -1.215  -0.944   0.000  1.00  0.00           H
-HETATM    5  H3  ETH A   1       1.215   0.944   0.000  1.00  0.00           H
-HETATM    6  H4  ETH A   1       1.215  -0.944   0.000  1.00  0.00           H
-CONECT    1    2    2    3    4
-CONECT    2    1    1    5    6
-CONECT    3    1
+HEADER    PROPENE
+HETATM    1  C1  PRO A   1      -1.260   0.000   0.000  1.00  0.00           C
+HETATM    2  C2  PRO A   1       0.080   0.000   0.000  1.00  0.00           C
+HETATM    3  C3  PRO A   1       0.840   1.320   0.000  1.00  0.00           C
+HETATM    4  H1  PRO A   1      -1.800   0.940   0.000  1.00  0.00           H
+HETATM    5  H2  PRO A   1      -1.800  -0.940   0.000  1.00  0.00           H
+HETATM    6  H3  PRO A   1       0.620  -0.940   0.000  1.00  0.00           H
+HETATM    7  H4  PRO A   1       1.910   1.120   0.000  1.00  0.00           H
+HETATM    8  H5  PRO A   1       0.580   1.900   0.890  1.00  0.00           H
+HETATM    9  H6  PRO A   1       0.580   1.900  -0.890  1.00  0.00           H
+CONECT    1    2    2    4    5
+CONECT    2    1    1    3    6
+CONECT    3    2    7    8    9
 CONECT    4    1
-CONECT    5    2
+CONECT    5    1
 CONECT    6    2
+CONECT    7    3
+CONECT    8    3
+CONECT    9    3
 END
 `);
 // 删除控制器拥有恢复来源与连接端快照；页面只连接状态和事件。
 const deletion = new PdbDeletionController({ pdbText, siteState, isImporting })
-const { busy: deletionBusy, connectionSites, inferBonds } = deletion
+const { busy: deletionBusy, connectionSites, inferBonds, monomerTemplate } = deletion
 const applyDeletion = deletion.apply.bind(deletion)
 const startSiteSetting = deletion.restart.bind(deletion)
+const resetSetting = deletion.resetSettings.bind(deletion)
+const polymer = new PolymerBuildController({
+    template: monomerTemplate, busy: deletionBusy, isImporting,
+    replaceText: deletion.replaceText.bind(deletion),
+})
+const {
+    type: polymerType, n: polymerN, bondLength: polymerBondLength,
+    result: polymerResult, error: polymerError,
+} = polymer
+const applyPolymer = polymer.apply.bind(polymer)
+// Vue 传入模板的新旧值；绑定方法从当前实例清空对应结果，无 setup 捕获。
+watch(monomerTemplate, polymer.reset.bind(polymer), { flush: 'sync' })
 // 文件读取器只接收输入状态和回调，不依赖删除控制器的内部实现。
 const importPdb = importPdbFile.bind(null, {
     active, pdbInput, isImporting, importError, busy: deletionBusy,
     acceptText: deletion.acceptText.bind(deletion), reset: resetSetting,
 })
+
+/** 输入模板传入的 PDB 文本和聚合结果；触发下载并释放临时资源。 */
+function exportPdb(text, result) {
+    if (!result || !text.trim()) return
+
+    const blob = new Blob([text], { type: 'chemical/x-pdb' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `polymer-${result.type}-${result.n}.pdb`
+
+    try {
+        document.body.appendChild(link)
+        link.click()
+    } finally {
+        link.remove()
+        // 定时器显式传入 URL；绑定内置方法的接收者，不捕获组件状态。
+        setTimeout(URL.revokeObjectURL.bind(URL), 1000, url)
+    }
+}
 
 </script>

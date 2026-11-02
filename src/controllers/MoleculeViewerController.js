@@ -334,7 +334,7 @@ export class MoleculeViewerController {
     return findLeavingGroups(this.model.selectedAtoms({}), sites);
   }
 
-  /** 输入：调用方当前 PDB 文本；输出：脱离渲染对象的拓扑快照，无副作用。 */
+  /** 输入：调用方当前 PDB 文本；输出：独立坐标/拓扑/身份快照，无副作用。 */
   getAtomSnapshot(text) {
     if (this.disposed || !this.model || text !== this.modelText) {
       throw new Error('分子模型尚未就绪，请等待刷新完成');
@@ -343,6 +343,10 @@ export class MoleculeViewerController {
     for (const atom of this.model.selectedAtoms({})) {
       result.push({
         index: atom.index, serial: atom.serial,
+        x: atom.x, y: atom.y, z: atom.z,
+        elem: atom.elem, atom: atom.atom, resn: atom.resn,
+        resi: atom.resi, chain: atom.chain, hetflag: atom.hetflag,
+        altLoc: atom.altLoc, icode: atom.icode, b: atom.b,
         bonds: [...(atom.bonds ?? [])], bondOrder: [...(atom.bondOrder ?? [])],
       });
     }
