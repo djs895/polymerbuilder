@@ -33,6 +33,7 @@ export class MoleculeViewerController {
     this.resources = new ViewerResources();
     this.viewer = null;
     this.model = null;
+    this.modelText = null;
 
     // 显示参数在构造时赋值，绘制和点击时读取，各实例独立保存。
     this.sphereScale = 0.3;
@@ -108,6 +109,7 @@ export class MoleculeViewerController {
       this.loadModel(this.props.pdbText);
       this.viewer.zoomTo();
       this.refreshSite();
+      this.modelText = this.props.pdbText;
     } catch (error) {
       // 初始化中途失败时，也尝试释放已经创建的资源。
       this.dispose();
@@ -125,8 +127,6 @@ export class MoleculeViewerController {
     this.model = this.viewer.addModel(text, "pdb", {
       keepH: true, assignBonds: this.props.inferBonds !== false,
     });
-    // 模型加载时记录来源，快照查询据此拒绝尚未刷新的旧模型。
-    this.modelText = text;
     this.viewer.setStyle({}, this.defaultStyle);
     this.viewer.setClickable({}, true, this.callbacks.atom);
     this.addBondCylinders();
@@ -432,6 +432,7 @@ export class MoleculeViewerController {
    * hoverTimeout、renderedMolObj 等属于 3Dmol 内部字段；升级时需重新核对。
    */
   clearModel() {
+    this.modelText = null;
     if (!this.viewer) return;
     clearTimeout(this.viewer.hoverTimeout);
     clearTimeout(this.viewer.longTouchTimeout);
@@ -483,6 +484,8 @@ export class MoleculeViewerController {
     this.loadModel(text);
     this.viewer.zoomTo();
     this.viewer.render();
+    // 只有完整加载并绘制后才确认来源，供父组件验证刷新结果。
+    this.modelText = text;
   }
 
   /**

@@ -260,14 +260,20 @@ const settingChange = confirmSiteSettings.bind(null, siteState)
 const resetSetting = resetSiteSettings.bind(null, siteState)
 // 保存 PDB 原始文本，作为解析器和查看器共同的数据来源。
 const pdbText = ref(`
-HETATM    1  C1  UNL     1       0.000   0.000   0.000  1.00  0.00           C
-HETATM    2  O1  UNL     1       1.430   0.000   0.000  1.00  0.00           O
-HETATM    3  H1  UNL     1      -0.540   0.935   0.000  1.00  0.00           H
-HETATM    4  H2  UNL     1      -0.540  -0.935   0.000  1.00  0.00           H
-CONECT    1    2    3    4
-CONECT    2    1
+HEADER    ETHYLENE MOLECULE
+TITLE     ETHYLENE C2H4
+HETATM    1  C1  ETH A   1      -0.670   0.000   0.000  1.00  0.00           C
+HETATM    2  C2  ETH A   1       0.670   0.000   0.000  1.00  0.00           C
+HETATM    3  H1  ETH A   1      -1.215   0.944   0.000  1.00  0.00           H
+HETATM    4  H2  ETH A   1      -1.215  -0.944   0.000  1.00  0.00           H
+HETATM    5  H3  ETH A   1       1.215   0.944   0.000  1.00  0.00           H
+HETATM    6  H4  ETH A   1       1.215  -0.944   0.000  1.00  0.00           H
+CONECT    1    2    2    3    4
+CONECT    2    1    1    5    6
 CONECT    3    1
 CONECT    4    1
+CONECT    5    2
+CONECT    6    2
 END
 `);
 // 删除控制器拥有恢复来源与连接端快照；页面只连接状态和事件。

@@ -37,18 +37,51 @@ export class PdbDeletionController {
       const atoms = state.siteViewer.value?.getAtomSnapshot(this.pdbText.value);
       if (!atoms) throw new Error('分子模型尚未就绪');
       const text = removeAtomsFromPdb(this.pdbText.value, removed, atoms);
-      // 所有计算成功后才提交。清除旧断键选择，单独保留聚合连接端。
+      // 文本转换和模型刷新都成功后才提交位点状态。
+      await this.replaceText(text, false);
       state.selection.reset();
       state.leavingGroups.value = null;
       state.editingSite.value = false;
       this.connectionSites.value = endpoints;
-      this.inferBonds.value = false;
-      this.pdbText.value = text;
-      await nextTick(); // 等待父子组件更新后再允许下一次操作。
     } catch (error) {
       state.siteError.value = error instanceof Error ? error.message : '应用删除失败';
     } finally {
       this.busy.value = false;
+    }
+  }
+
+  /** 输入：新文本和推断开关；输出：Promise<void>；刷新失败时回滚文本。 */
+  async replaceText(text, inferBonds) {
+    const previousText = this.pdbText.value;
+    const previousInference = this.inferBonds.value;
+    try {
+      this.inferBonds.value = inferBonds;
+      this.pdbText.value = text;
+      await nextTick();
+      // Vue 刷新完成不等于模型加载成功，必须由查看器确认。
+      const viewer = this.siteState.siteViewer.value;
+      if (!viewer) throw new Error('分子查看器已关闭');
+      viewer.getAtomSnapshot(text);
+    } catch (error) {
+      this.inferBonds.value = previousInference;
+      this.pdbText.value = previousText;
+      try {
+        await nextTick();
+        const viewer = this.siteState.siteViewer.value;
+        if (!viewer) throw new Error('分子查看器已关闭');
+        viewer.getAtomSnapshot(previousText);
+        // 模型重建清空了查看器选择，但父组件 ref 没变，需显式恢复交互。
+        const selection = this.siteState.selection;
+        viewer.setSiteSelection({
+          phase: selection.phase.value,
+          bondSerials: selection.bond.value,
+          retainedSerial: selection.atom.value,
+          sites: { ...selection.sites.value },
+        });
+      } catch {
+        throw new Error('模型刷新及恢复失败，请重新导入原始文件');
+      }
+      throw error;
     }
   }
 
@@ -57,12 +90,12 @@ export class PdbDeletionController {
     if (this.busy.value || this.isImporting.value) return;
     this.busy.value = true;
     try {
+      await this.replaceText(this.originalPdbText.value, true);
       resetSiteSettings(this.siteState);
       this.connectionSites.value = null;
-      this.inferBonds.value = true;
-      this.pdbText.value = this.originalPdbText.value;
-      await nextTick();
       startSiteSettings(this.siteState);
+    } catch (error) {
+      this.siteState.siteError.value = error instanceof Error ? error.message : '恢复失败';
     } finally {
       this.busy.value = false;
     }

@@ -6,11 +6,14 @@ import { PdbDeletionController } from '../src/controllers/PdbDeletionController.
 class SelectionFixture {
   constructor() {
     this.phase = ref('ready');
+    this.bond = ref(null);
+    this.atom = ref(null);
     this.sites = ref({ head: { retainedSerial: 20 }, tail: { retainedSerial: 30 } });
   }
   reset() { this.phase.value = 'head'; this.sites.value = { head: null, tail: null }; }
 }
 class ViewerFixture {
+  setSiteSelection(selection) { this.selection = selection; }
   getAtomSnapshot() {
     return [
       { index: 0, serial: 10, bonds: [1] },
@@ -81,4 +84,28 @@ test('import replaces restore source and instances remain isolated', async funct
   first.isImporting.value = true;
   await first.restart();
   assert.equal(first.siteState.editingSite.value, false);
+});
+
+class FailedReplacementViewer extends ViewerFixture {
+  getAtomSnapshot(text) {
+    // 模型重载会清空查看器选择，父组件的 ref 则保持不变。
+    this.selection = null;
+    if (text.includes('CONECT')) throw new Error('模型刷新失败');
+    return super.getAtomSnapshot();
+  }
+}
+
+test('failed renderer acknowledgement restores text and preserves retry state', async function () {
+  const flow = fixture();
+  const original = flow.pdbText.value;
+  flow.siteState.siteViewer.value = new FailedReplacementViewer();
+  await flow.apply();
+  assert.equal(flow.pdbText.value, original);
+  assert.equal(flow.siteState.selection.phase.value, 'ready');
+  assert.deepEqual(flow.siteState.leavingGroups.value, { head: [10], tail: [] });
+  assert.equal(flow.connectionSites.value, null);
+  assert.equal(flow.inferBonds.value, true);
+  assert.match(flow.siteState.siteError.value, /刷新失败/);
+  assert.equal(flow.siteState.siteViewer.value.selection.phase, 'ready');
+  assert.equal(flow.siteState.siteViewer.value.selection.sites.head.retainedSerial, 20);
 });

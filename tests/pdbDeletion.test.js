@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { runInNewContext } from 'node:vm';
 import { removeAtomsFromPdb } from '../src/utils/removeAtomsFromPdb.js';
 
 export function moleculeFixture() {
@@ -17,6 +20,27 @@ export function moleculeFixture() {
   ];
   return { lines, atoms, text: [...lines, 'END'].join('\n') + '\n' };
 }
+
+test('real 3Dmol parser preserves coordinates and double bonds after deletion', function () {
+  // 补齐库加载所需全局，使用真实解析器，不启动 WebGL。
+  const require = createRequire(import.meta.url);
+  const sandbox = {
+    navigator: { userAgent: 'node' }, document: {},
+    module: { exports: {} }, exports: {}, console, TextEncoder, TextDecoder,
+  };
+  sandbox.window = sandbox;
+  runInNewContext(readFileSync(require.resolve('3dmol'), 'utf8'), sandbox);
+  const { text, atoms } = moleculeFixture();
+  const result = removeAtomsFromPdb(text, [10, 40], atoms);
+  const parsed = sandbox.module.exports.Parsers.PDB(result, { keepH: true, assignBonds: false })[0];
+  assert.equal(parsed.length, 2);
+  assert.equal(parsed[0].serial, 20);
+  assert.equal(parsed[1].serial, 30);
+  assert.equal(parsed[1].x, 1.4);
+  assert.deepEqual(Array.from(parsed[0].bonds), [1]);
+  assert.deepEqual(Array.from(parsed[0].bondOrder), [2]);
+  assert.deepEqual(Array.from(parsed[1].bondOrder), [2]);
+});
 
 test('deletion preserves atom lines and reconstructs bonds absent from source', function () {
   const { lines, atoms, text } = moleculeFixture();
