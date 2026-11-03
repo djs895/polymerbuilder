@@ -6,6 +6,7 @@
 </template>
 
 <script setup>
+// 来源：第三方依赖 3dmol；用于创建查看器、加载 PDB 和绘制可交互的分子模型。
 import * as $3Dmol from "3dmol/build/3Dmol.js";
 import { ref, toRef, watch, onMounted, onBeforeUnmount } from "vue";
 import { origin } from "../utils/oringin";
@@ -17,6 +18,7 @@ import { MoleculeViewerController } from "../controllers/MoleculeViewerControlle
  * pdbText：PDB 原始文本；首次挂载时读取，后续变化通过 watch 传入。
  */
 const props = defineProps({
+  //用来检查目前是否进行位点标定
   siteMode: Boolean,
   pdbText: { type: String, required: true },
   // 删除后的文本包含完整连接，父组件关闭自动推断以保持拓扑。
